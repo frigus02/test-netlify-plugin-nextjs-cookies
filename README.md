@@ -1,34 +1,45 @@
-This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# test-netlify-plugin-nextjs-cookies
 
-## Getting Started
+It looks like multiple cookies are not correctly serialized when the browser sends multiple cookie headers over HTTP/2.
 
-First, run the development server:
+## Steps to reproduce
 
-```bash
-npm run dev
-# or
-yarn dev
+1. Test locally
+
+   ```
+   yarn
+   yarn dev
+   ```
+
+   Open http://localhost:3000/ and click on the button to generate 2 cookies. The site should reload and show `"first=1; second=2"`. Those are serialized correctly. You can see in the browser devtools that it uses HTTP/1.1.
+
+2. Test on Netlify
+
+   ```
+   export NETLIFY_SITE_ID=your_site_id
+   yarn
+   yarn deploy
+   ```
+
+   Open deployed site and click on the button to generate 2 cookies. The site should reload and show `"first=1,second=2"`. Those are _not_ serialized correctly. They are separated by a comma instead of semicolon. You should see in the browser devtools that it uses HTTP/2.
+
+## Investigation
+
+We investigated further and saw in Wireshark, that browsers send multiple cookie headers when using HTTP/2:
+
+```
+cookie: first=1
+cookie: second=2
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+but only 1 header with using HTTP/1.1:
 
-You can start editing the page by modifying `pages/index.js`. The page auto-updates as you edit the file.
+```
+cookie: first=1; second=2
+```
 
-[API routes](https://nextjs.org/docs/api-routes/introduction) can be accessed on [http://localhost:3000/api/hello](http://localhost:3000/api/hello). This endpoint can be edited in `pages/api/hello.js`.
+This distinction is _not_ visible in browser devtools, sadly. But it seems to be according to the spec.
 
-The `pages/api` directory is mapped to `/api/*`. Files in this directory are treated as [API routes](https://nextjs.org/docs/api-routes/introduction) instead of React pages.
+We think the code that serializes with a comma instead of semicolon is this line:
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+https://github.com/netlify/netlify-plugin-nextjs/blob/46526f955240dfcd1f65c4ecfa0c563ce2b1362d/src/lib/templates/createRequestObject.js#L64
